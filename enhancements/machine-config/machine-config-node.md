@@ -6,16 +6,18 @@ authors:
 reviewers: # Include a comment about what domain expertise a reviewer is expected to bring and what area of the enhancement you expect them to focus on. For example: - "@networkguru, for networking aspects, please look at IP bootstrapping aspect"
   - "@sinnykumari" # MCO
   - "@yuqi-zhang" # MCO
+  # TODO: add OCL representative to this list
 approvers:
   - "@sinnykumari"
   - "@yuqi-zhang"
 api-approvers: # In case of new or modified APIs or API extensions (CRDs, aggregated apiservers, webhooks, finalizers). If there is no API change, use "None"
   - "@JoelSpeed"
 creation-date: 2023-10-05
-last-updated: 2025-05-22
+last-updated: 2025-06-16 #TODO: make sure this is up to date
 tracking-link:
   - https://issues.redhat.com/browse/MCO-452
   - https://issues.redhat.com/browse/MCO-836
+  - https://issues.redhat.com/browse/MCO-1506
 see-also:
 replaces:
 superseded-by:
@@ -29,9 +31,9 @@ This enhancement describes how Nodes and their upgrade processes should be aggre
 
 ## Motivation
 
-The MCO manages node upgrades but since we do not own the object or store much of their data in other ways, much of what occurs during an upgrade is simply a black box operation that we currently report as "Updating" or "Updated". Users can debug into a specific node or look into the node spec for some of this information, but most of it simply lives in the MCO code rather than in data structures. We want to put these abstract "phases" of node operations, as triggered by the MCO, into a concrete data structure.
+The MCO manages node upgrades, but since we do not own the `Node` object or store much of their data in other ways, much of what occurs during an upgrade is simply a black box operation that we currently report as "Updating" or "Updated". Users can debug into a specific node or look into the node spec for some of this information, but most of it simply lives in the MCO code rather than in data structures. We want to put these abstract "phases" of node operations, as triggered by the MCO, into a concrete data structure.
 
-This feature is more tied to MCO procedures than the state reporting of the MachineConfigPool (MCP). We are designing this to fill the gap between what the MCP currently reports and what is actually happening in the MCO pertaining to Node updates. One can view this as an API tied to MCO procedures. However, these objects are a way to track node update status and, since the MCO owns the update code, it just so happens that a lot of these actions are tied to the MCO.
+This feature is more tied to MCO procedures than the state reporting of the MachineConfigPool (MCP). We are designing this to fill the gap between what the MCP currently reports and what is actually happening in the MCO pertaining to node updates. One can view this as an API tied to MCO procedures. However, these objects are a way to track node update status and, since the MCO owns the update code, it just so happens that a lot of these actions are tied to the MCO.
 
 ### User Stories
 
@@ -75,13 +77,13 @@ as well as
 
 ```console
 $ oc get machineconfignodes -o wide
-NAME                          POOLNAME   DESIREDCONFIG                                      CURRENTCONFIG                                      UPDATED   UPDATEPREPARED   UPDATEEXECUTED   UPDATEPOSTACTIONCOMPLETE   UPDATECOMPLETE   RESUMED   UPDATEDFILESANDOS   CORDONEDNODE   DRAINEDNODE   REBOOTEDNODE   UNCORDONEDNODE
-ip-10-0-1-147.ec2.internal    worker     rendered-worker-e484b6e623b09767d5d8245e01a90a41   rendered-worker-e484b6e623b09767d5d8245e01a90a41   True      False            False            False                      False            False     False               False          False         False          False
-ip-10-0-20-154.ec2.internal   master     rendered-master-78c005824ab643a5e2ac917f028b570f   rendered-master-78c005824ab643a5e2ac917f028b570f   True      False            False            False                      False            False     False               False          False         False          False
-ip-10-0-41-83.ec2.internal    worker     rendered-worker-e484b6e623b09767d5d8245e01a90a41   rendered-worker-e484b6e623b09767d5d8245e01a90a41   True      False            False            False                      False            False     False               False          False         False          False
-ip-10-0-48-14.ec2.internal    master     rendered-master-78c005824ab643a5e2ac917f028b570f   rendered-master-78c005824ab643a5e2ac917f028b570f   True      False            False            False                      False            False     False               False          False         False          False
-ip-10-0-79-1.ec2.internal     worker     rendered-worker-e484b6e623b09767d5d8245e01a90a41   rendered-worker-e484b6e623b09767d5d8245e01a90a41   True      False            False            False                      False            False     False               False          False         False          False
-ip-10-0-95-127.ec2.internal   master     rendered-master-78c005824ab643a5e2ac917f028b570f   rendered-master-78c005824ab643a5e2ac917f028b570f   True      False            False            False                      False            False     False               False          False         False          False
+NAME                          POOLNAME   DESIREDCONFIG                                      CURRENTCONFIG                                      UPDATED   UPDATEPREPARED   UPDATEEXECUTED   UPDATEPOSTACTIONCOMPLETE   UPDATECOMPLETE   RESUMED   UPDATEDFILESANDOS   APPLIEDFILES   APPLIEDOSIMAGE   CORDONEDNODE   DRAINEDNODE   REBOOTEDNODE   UNCORDONEDNODE   IMAGEPULLEDFROMREGISTRY
+ip-10-0-33-68.ec2.internal    master     rendered-master-8da5138373177e7e587e5115a8245198   rendered-master-8da5138373177e7e587e5115a8245198   True      False            False            False                      False            False     False               False          False            False          False         False          False            False
+ip-10-0-4-60.ec2.internal     worker     rendered-worker-112b254dd5952a5af59b7f7639490026   rendered-worker-112b254dd5952a5af59b7f7639490026   True      False            False            False                      False            False     False               False          False            False          False         False          False            False
+ip-10-0-68-11.ec2.internal    master     rendered-master-8da5138373177e7e587e5115a8245198   rendered-master-8da5138373177e7e587e5115a8245198   True      False            False            False                      False            False     False               False          False            False          False         False          False            False
+ip-10-0-91-192.ec2.internal   worker     rendered-worker-112b254dd5952a5af59b7f7639490026   rendered-worker-112b254dd5952a5af59b7f7639490026   True      False            False            False                      False            False     False               False          False            False          False         False          False            False
+ip-10-0-99-169.ec2.internal   worker     rendered-worker-112b254dd5952a5af59b7f7639490026   rendered-worker-112b254dd5952a5af59b7f7639490026   True      False            False            False                      False            False     False               False          False            False          False         False          False            False
+ip-10-0-99-29.ec2.internal    master     rendered-master-8da5138373177e7e587e5115a8245198   rendered-master-8da5138373177e7e587e5115a8245198   True      False            False            False                      False            False     False               False          False            False          False         False          False            False
 ```
 
 where each name represents a node. The statuses reported are created explicitly from MCO node annotations and MCO actions, no other operator actions are taken into account here. This allows us to get quite specific in what is occurring on the nodes.
@@ -109,6 +111,8 @@ Metadata:
 Spec:
   Config Version:
     Desired:  rendered-worker-e484b6e623b09767d5d8245e01a90a41
+  Config Image:
+    Desired:  image-registry.openshift-image-registry.svc:5000/openshift-machine-config-operator/ocb-image@sha256:6600f777a1d8b3b5be31f483189b5dc813799fe45bb2ba18b5742b58e27e9387
   Node:
     Name:  ip-10-0-1-147.ec2.internal
   Pool:
@@ -146,6 +150,11 @@ Status:
     Status:                False
     Type:                  Resumed
     Last Transition Time:  2025-05-22T12:37:28Z
+    Message:               This node has not yet entered the ImagePulledFromRegistry phase
+    Reason:                NotYetOccurred
+    Status:                False
+    Type:                  ImagePulledFromRegistry
+    Last Transition Time:  2025-05-22T12:37:28Z
     Message:               This node has not yet entered the Drained phase
     Reason:                NotYetOccurred
     Status:                False
@@ -155,6 +164,16 @@ Status:
     Reason:                NotYetOccurred
     Status:                False
     Type:                  AppliedFilesAndOS
+    Last Transition Time:  2025-05-22T12:37:28Z
+    Message:               This node has not yet entered the AppliedFiles phase
+    Reason:                NotYetOccurred
+    Status:                False
+    Type:                  AppliedFiles
+    Last Transition Time:  2025-05-22T12:37:28Z
+    Message:               This node has not yet entered the AppliedOSImage phase
+    Reason:                NotYetOccurred
+    Status:                False
+    Type:                  AppliedOSImage
     Last Transition Time:  2025-05-22T12:37:28Z
     Message:               This node has not yet entered the Cordoned phase
     Reason:                NotYetOccurred
@@ -188,13 +207,16 @@ Status:
   Config Version:
     Current:            rendered-worker-e484b6e623b09767d5d8245e01a90a41
     Desired:            rendered-worker-e484b6e623b09767d5d8245e01a90a41
+  Config Image:
+    Current:            machineconfiguration.openshift.io/currentImage: image-registry.openshift-image-registry.svc:5000/openshift-machine-config-operator/ocb-image@sha256:6600f777a1d8b3b5be31f483189b5dc813799fe45bb2ba18b5742b58e27e9387
+    Desired:            machineconfiguration.openshift.io/desiredImage: image-registry.openshift-image-registry.svc:5000/openshift-machine-config-operator/ocb-image@sha256:6600f777a1d8b3b5be31f483189b5dc813799fe45bb2ba18b5742b58e27e9387
   Observed Generation:  3
 Events:                 <none>
 ```
 
-The above struct gives us some helpful information about a node as it pertains to the MCO. The `Spec` contains information about the Node's name, MCP association, and the desired config version it is targeting. The heart of the MCN resource is the list of `Conditions`, which describes all upgrade related events that have occurred on the node from the most recent upgrade process, no matter how small. You can also see the current and desired MachineConfig (MC) versions, indicating whether or not the node should be updating as well as whether or not the currently tracked update process held in `Conditions` is updating to the expected MC. The `ObservedGeneration` exists to let the user know how many times we have gone through some upgrade related changes.
+The above struct gives us some helpful information about a node as it pertains to the MCO. `Spec` contains information about the node's name, MCP association, and the desired rendered MachineConfig (MC) version it is targeting. If on-cluster image mode is enabled, the `Spec` will also show the desired image for the node. The heart of the MCN resource is the list of `Conditions` in `Status`, which describes all upgrade related events that have occurred on the node from the most recent upgrade process, no matter how small. You can also see the current and desired rendered MC versions and desired and current image versions, if applicable, of the node in `Status`. The current and desired values indicate to the user whether or not the node should be updating as well as whether or not the currently tracked update process held in `Conditions` is updating to the expected rendered MC or image. The `ObservedGeneration` exists to let the user know how many times we have gone through some upgrade related changes.
 
-The desired config found in the spec will get updated immediately when a new config is found on the node. However, the desired config found in the status will only get updated once the new config has been validated in the machine config daemon. In the current implementation, the desired config is populated in the status by checking whether the update successfully gets past the "UpdatePrepared" phase. If the "UpdatePrepared" phase succeeds, then the status can safely add the desired config. 
+The desired config or image found in `Spec` will get updated immediately when a new config or image is found on the node. However, the desired config and image found in `Status` will only get updated once the new config has been validated in the MCD or the image has been successfully created. In the current implementation, the desired config is populated in the status by checking whether the update successfully gets past the "UpdatePrepared" phase. If the "UpdatePrepared" phase succeeds, then the status can safely add the desired config. 
 
 The states to be reported by this MCN will roughly fall into the following:
 
@@ -202,6 +224,7 @@ The states to be reported by this MCN will roughly fall into the following:
  - Stopping config drift monitor
  - Reconciling configs
 #### Executed Phase
+- Image pulled, if applicable
 - Cordoned Node
 - Drained Node
 - Updated on disk state
@@ -221,7 +244,7 @@ The states to be reported by this MCN will roughly fall into the following:
 
 ### Workflow Description
 
-With the implementation the MCO introduced in 4.15 and promotion to General Availability (GA) in 4.19, the MCN objects are meant to track upgrade progression of nodes as impacted by the MCO. The general progression here is:
+With the implementation the MCO introduced in 4.15 and promotion to General Availability (GA) in 4.19, the MCN objects are meant to track upgrade progression of nodes as impacted by the MCO. In 4.20, first being introduced as tech-preview, the MCN will also track the upgrade progression of nodes going through an on-cluster image mode update. The general progression of phases is:
 - False == this phase has not started yet during the most recent upgrade process
 - Unknown == this phase is either being executed or has errored
   - If the phase has errored, `oc describe machineconfignodes/<node-name>` will display more information in the `metav1.Conditions` list.
@@ -233,7 +256,8 @@ There are three types of conditions in MCN:
    - Includes `UpdatePrepared`, `UpdateExecuted`, `UpdatePostActionComplete`, `RebootedNode`, `Resumed`, `UpdateComplete`, and `Updated`.
 - Child
    - These conditions are phases that occur within the overarching parent phases.
-   - Includes `Drained`, `AppliedFilesAndOS`, `Cordoned`, and `Uncordoned`.
+   - In 4.19, this includes `Drained`, `AppliedFilesAndOS`, `Cordoned`, and `Uncordoned`.
+   - In 4.20, this additionally includes `ImagePulledFromRegistry`, `AppliedOSImage`, and `AppliedFiles`.
 - Singleton
    - These conditions do not relate to a stage in a node update, but provide additional information on the processes occurring on a node.
    - Includes `NodeDegraded`, `PinnedImageSetsProgressing`, and `PinnedImageSetsDegraded`.
@@ -242,7 +266,7 @@ There are three types of conditions in MCN:
 #### Standard Update Flow
 When an upgrade is triggered by there being a mismatch between a desired and current config or simply just a new MC being applied, the MCNs for a specific pool will report the following processes (roughly).
 
-The information shown in `oc get machineconfignodes` includes the Node's name, associated MCP, current and desired config versions, and updated status. Using `oc describe machineconfignodes -o wide` will additionally reveal all parent and child phases. Within each parent phase there can be 0+ child phases that customers can use to see upgrade progression. The upgrade flow can be seen in the following diagram and in the subsequent example outputs.
+The information shown in `oc get machineconfignodes` includes the Node's name, associated MCP, current and desired config versions, and updated status. Using `oc describe machineconfignodes -o wide` will additionally reveal all parent and child phases. Within each parent phase there can be 0+ child phases that customers can use to see upgrade progression. The upgrade flow can be seen in the following diagram and in the subsequent example outputs. Note that all perviously listed phases will exist in the MCN object during the update, but the mermaid diagram below has been condensed to only highlight the conditions relevant to a standard node update, where "standard" refers to an update where on-cluster image mode has not been enabled update.
 
 ```mermaid
 block-beta
@@ -303,115 +327,68 @@ classDef Phase font-weight:bold,fill:#bbbbbb,stroke:#000,color:#000
 *Before an update is triggered, UPDATED will be True and all other statuses will be False.*
 ```console
 $ oc get machineconfignodes -o wide
-NAME                          POOLNAME   DESIREDCONFIG                                      CURRENTCONFIG                                      UPDATED   UPDATEPREPARED   UPDATEEXECUTED   UPDATEPOSTACTIONCOMPLETE   UPDATECOMPLETE   RESUMED   UPDATEDFILESANDOS   CORDONEDNODE   DRAINEDNODE   REBOOTEDNODE   UNCORDONEDNODE
-ip-10-0-16-253.ec2.internal   master     rendered-master-6c320f722eb9ce8bfbd80750dbf70d2e   rendered-master-6c320f722eb9ce8bfbd80750dbf70d2e   True      False            False            False                      False            False     False               False          False         False          False          
-ip-10-0-16-61.ec2.internal    worker     rendered-worker-f77322e2feead61600f41c9ae9ed0ff7   rendered-worker-f77322e2feead61600f41c9ae9ed0ff7   True      False            False            False                      False            False     False               False          False         False          False          
-ip-10-0-32-167.ec2.internal   master     rendered-master-6c320f722eb9ce8bfbd80750dbf70d2e   rendered-master-6c320f722eb9ce8bfbd80750dbf70d2e   True      False            False            False                      False            False     False               False          False         False          False          
-ip-10-0-63-242.ec2.internal   worker     rendered-worker-f77322e2feead61600f41c9ae9ed0ff7   rendered-worker-f77322e2feead61600f41c9ae9ed0ff7   True      False            False            False                      False            False     False               False          False         False          False          
-ip-10-0-65-65.ec2.internal    worker     rendered-worker-f77322e2feead61600f41c9ae9ed0ff7   rendered-worker-f77322e2feead61600f41c9ae9ed0ff7   True      False            False            False                      False            False     False               False          False         False          False          
-ip-10-0-73-121.ec2.internal   master     rendered-master-6c320f722eb9ce8bfbd80750dbf70d2e   rendered-master-6c320f722eb9ce8bfbd80750dbf70d2e   True      False            False            False                      False            False     False               False          False         False          False          
+NAME                          POOLNAME   DESIREDCONFIG                                      CURRENTCONFIG                                      UPDATED   UPDATEPREPARED   UPDATEEXECUTED   UPDATEPOSTACTIONCOMPLETE   UPDATECOMPLETE   RESUMED   UPDATEDFILESANDOS   APPLIEDFILES   APPLIEDOSIMAGE   CORDONEDNODE   DRAINEDNODE   REBOOTEDNODE   UNCORDONEDNODE   IMAGEPULLEDFROMREGISTRY
+ip-10-0-4-60.ec2.internal     worker     rendered-worker-112b254dd5952a5af59b7f7639490026   rendered-worker-112b254dd5952a5af59b7f7639490026   True      False            False            False                      False            False     False               False          False            False          False         False          False            False
 ```
 
 *Once an update is triggered, UPDATED will flip to False and UPDATEPREPARED begins.*
 ```console
 $ oc get machineconfignodes -o wide
-NAME                          POOLNAME   DESIREDCONFIG                                      CURRENTCONFIG                                      UPDATED   UPDATEPREPARED   UPDATEEXECUTED   UPDATEPOSTACTIONCOMPLETE   UPDATECOMPLETE   RESUMED   UPDATEDFILESANDOS   CORDONEDNODE   DRAINEDNODE   REBOOTEDNODE   UNCORDONEDNODE
-ip-10-0-16-253.ec2.internal   master     rendered-master-ceedbbb3b533372a501c2410fa554c89   rendered-master-6c320f722eb9ce8bfbd80750dbf70d2e   False     True             False            False                      False            False     False               False          False         False          False          
-ip-10-0-16-61.ec2.internal    worker     rendered-worker-f77322e2feead61600f41c9ae9ed0ff7   rendered-worker-f77322e2feead61600f41c9ae9ed0ff7   True      False            False            False                      False            False     False               False          False         False          False          
-ip-10-0-32-167.ec2.internal   master     rendered-master-6c320f722eb9ce8bfbd80750dbf70d2e   rendered-master-6c320f722eb9ce8bfbd80750dbf70d2e   True      False            False            False                      False            False     False               False          False         False          False          
-ip-10-0-63-242.ec2.internal   worker     rendered-worker-f77322e2feead61600f41c9ae9ed0ff7   rendered-worker-f77322e2feead61600f41c9ae9ed0ff7   True      False            False            False                      False            False     False               False          False         False          False          
-ip-10-0-65-65.ec2.internal    worker     rendered-worker-f77322e2feead61600f41c9ae9ed0ff7   rendered-worker-f77322e2feead61600f41c9ae9ed0ff7   True      False            False            False                      False            False     False               False          False         False          False          
-ip-10-0-73-121.ec2.internal   master     rendered-master-6c320f722eb9ce8bfbd80750dbf70d2e   rendered-master-6c320f722eb9ce8bfbd80750dbf70d2e   True      False            False            False                      False            False     False               False          False         False          False          
+NAME                          POOLNAME   DESIREDCONFIG                                      CURRENTCONFIG                                      UPDATED   UPDATEPREPARED   UPDATEEXECUTED   UPDATEPOSTACTIONCOMPLETE   UPDATECOMPLETE   RESUMED   UPDATEDFILESANDOS   APPLIEDFILES   APPLIEDOSIMAGE   CORDONEDNODE   DRAINEDNODE   REBOOTEDNODE   UNCORDONEDNODE   IMAGEPULLEDFROMREGISTRY
+ip-10-0-4-60.ec2.internal     worker     rendered-worker-f77322e2feead61600f41c9ae9ed0ff7   rendered-worker-112b254dd5952a5af59b7f7639490026   False     True             False            False                      False            False     False               False          False            False          False         False          False            False
 ```
 
 *After the update prepared phase completes, UPDATEEXECUTED and its children phases, CORDONEDNODE, DRAINEDNODE, and UPDATEDFILESANDOS, begin.*
 ```console
 $ oc get machineconfignodes -o wide
-NAME                          POOLNAME   DESIREDCONFIG                                      CURRENTCONFIG                                      UPDATED   UPDATEPREPARED   UPDATEEXECUTED   UPDATEPOSTACTIONCOMPLETE   UPDATECOMPLETE   RESUMED   UPDATEDFILESANDOS   CORDONEDNODE   DRAINEDNODE   REBOOTEDNODE   UNCORDONEDNODE
-ip-10-0-16-253.ec2.internal   master     rendered-master-ceedbbb3b533372a501c2410fa554c89   rendered-master-6c320f722eb9ce8bfbd80750dbf70d2e   False     True             Unknown          False                      False            False     False               True           Unknown       False          False          
-ip-10-0-16-61.ec2.internal    worker     rendered-worker-f77322e2feead61600f41c9ae9ed0ff7   rendered-worker-f77322e2feead61600f41c9ae9ed0ff7   True      False            False            False                      False            False     False               False          False         False          False          
-ip-10-0-32-167.ec2.internal   master     rendered-master-6c320f722eb9ce8bfbd80750dbf70d2e   rendered-master-6c320f722eb9ce8bfbd80750dbf70d2e   True      False            False            False                      False            False     False               False          False         False          False          
-ip-10-0-63-242.ec2.internal   worker     rendered-worker-f77322e2feead61600f41c9ae9ed0ff7   rendered-worker-f77322e2feead61600f41c9ae9ed0ff7   True      False            False            False                      False            False     False               False          False         False          False          
-ip-10-0-65-65.ec2.internal    worker     rendered-worker-f77322e2feead61600f41c9ae9ed0ff7   rendered-worker-f77322e2feead61600f41c9ae9ed0ff7   True      False            False            False                      False            False     False               False          False         False          False          
-ip-10-0-73-121.ec2.internal   master     rendered-master-6c320f722eb9ce8bfbd80750dbf70d2e   rendered-master-6c320f722eb9ce8bfbd80750dbf70d2e   True      False            False            False                      False            False     False               False          False         False          False          
+NAME                          POOLNAME   DESIREDCONFIG                                      CURRENTCONFIG                                      UPDATED   UPDATEPREPARED   UPDATEEXECUTED   UPDATEPOSTACTIONCOMPLETE   UPDATECOMPLETE   RESUMED   UPDATEDFILESANDOS   APPLIEDFILES   APPLIEDOSIMAGE   CORDONEDNODE   DRAINEDNODE   REBOOTEDNODE   UNCORDONEDNODE   IMAGEPULLEDFROMREGISTRY
+ip-10-0-4-60.ec2.internal     worker     rendered-worker-f77322e2feead61600f41c9ae9ed0ff7   rendered-worker-112b254dd5952a5af59b7f7639490026   False     True             Unknown          False                      False            False     False               False          False            True           Unknown       False          False            False
 ```
 
 ```console
 $ oc get machineconfignodes -o wide
-NAME                          POOLNAME   DESIREDCONFIG                                      CURRENTCONFIG                                      UPDATED   UPDATEPREPARED   UPDATEEXECUTED   UPDATEPOSTACTIONCOMPLETE   UPDATECOMPLETE   RESUMED   UPDATEDFILESANDOS   CORDONEDNODE   DRAINEDNODE   REBOOTEDNODE   UNCORDONEDNODE
-ip-10-0-16-253.ec2.internal   master     rendered-master-ceedbbb3b533372a501c2410fa554c89   rendered-master-6c320f722eb9ce8bfbd80750dbf70d2e   False     True             Unknown          False                      False            False     Unknown             True           True          False          False          
-ip-10-0-16-61.ec2.internal    worker     rendered-worker-f77322e2feead61600f41c9ae9ed0ff7   rendered-worker-f77322e2feead61600f41c9ae9ed0ff7   True      False            False            False                      False            False     False               False          False         False          False          
-ip-10-0-32-167.ec2.internal   master     rendered-master-6c320f722eb9ce8bfbd80750dbf70d2e   rendered-master-6c320f722eb9ce8bfbd80750dbf70d2e   True      False            False            False                      False            False     False               False          False         False          False          
-ip-10-0-63-242.ec2.internal   worker     rendered-worker-f77322e2feead61600f41c9ae9ed0ff7   rendered-worker-f77322e2feead61600f41c9ae9ed0ff7   True      False            False            False                      False            False     False               False          False         False          False          
-ip-10-0-65-65.ec2.internal    worker     rendered-worker-f77322e2feead61600f41c9ae9ed0ff7   rendered-worker-f77322e2feead61600f41c9ae9ed0ff7   True      False            False            False                      False            False     False               False          False         False          False          
-ip-10-0-73-121.ec2.internal   master     rendered-master-6c320f722eb9ce8bfbd80750dbf70d2e   rendered-master-6c320f722eb9ce8bfbd80750dbf70d2e   True      False            False            False                      False            False     False               False          False         False          False          
+NAME                          POOLNAME   DESIREDCONFIG                                      CURRENTCONFIG                                      UPDATED   UPDATEPREPARED   UPDATEEXECUTED   UPDATEPOSTACTIONCOMPLETE   UPDATECOMPLETE   RESUMED   UPDATEDFILESANDOS   APPLIEDFILES   APPLIEDOSIMAGE   CORDONEDNODE   DRAINEDNODE   REBOOTEDNODE   UNCORDONEDNODE   IMAGEPULLEDFROMREGISTRY
+ip-10-0-4-60.ec2.internal     worker     rendered-worker-f77322e2feead61600f41c9ae9ed0ff7   rendered-worker-112b254dd5952a5af59b7f7639490026   False     True             Unknown          False                      False            False     Unknown             False          False            True           True          False          False            False
 ```
 
 ```console
 $ oc get machineconfignodes -o wide
-NAME                          POOLNAME   DESIREDCONFIG                                      CURRENTCONFIG                                      UPDATED   UPDATEPREPARED   UPDATEEXECUTED   UPDATEPOSTACTIONCOMPLETE   UPDATECOMPLETE   RESUMED   UPDATEDFILESANDOS   CORDONEDNODE   DRAINEDNODE   REBOOTEDNODE   UNCORDONEDNODE
-ip-10-0-16-253.ec2.internal   master     rendered-master-ceedbbb3b533372a501c2410fa554c89   rendered-master-6c320f722eb9ce8bfbd80750dbf70d2e   False     True             True             False                      False            False     True                True           True          False          False          
-ip-10-0-16-61.ec2.internal    worker     rendered-worker-f77322e2feead61600f41c9ae9ed0ff7   rendered-worker-f77322e2feead61600f41c9ae9ed0ff7   True      False            False            False                      False            False     False               False          False         False          False          
-ip-10-0-32-167.ec2.internal   master     rendered-master-6c320f722eb9ce8bfbd80750dbf70d2e   rendered-master-6c320f722eb9ce8bfbd80750dbf70d2e   True      False            False            False                      False            False     False               False          False         False          False          
-ip-10-0-63-242.ec2.internal   worker     rendered-worker-f77322e2feead61600f41c9ae9ed0ff7   rendered-worker-f77322e2feead61600f41c9ae9ed0ff7   True      False            False            False                      False            False     False               False          False         False          False          
-ip-10-0-65-65.ec2.internal    worker     rendered-worker-f77322e2feead61600f41c9ae9ed0ff7   rendered-worker-f77322e2feead61600f41c9ae9ed0ff7   True      False            False            False                      False            False     False               False          False         False          False          
-ip-10-0-73-121.ec2.internal   master     rendered-master-6c320f722eb9ce8bfbd80750dbf70d2e   rendered-master-6c320f722eb9ce8bfbd80750dbf70d2e   True      False            False            False                      False            False     False               False          False         False          False          
+NAME                          POOLNAME   DESIREDCONFIG                                      CURRENTCONFIG                                      UPDATED   UPDATEPREPARED   UPDATEEXECUTED   UPDATEPOSTACTIONCOMPLETE   UPDATECOMPLETE   RESUMED   UPDATEDFILESANDOS   APPLIEDFILES   APPLIEDOSIMAGE   CORDONEDNODE   DRAINEDNODE   REBOOTEDNODE   UNCORDONEDNODE   IMAGEPULLEDFROMREGISTRY
+ip-10-0-4-60.ec2.internal     worker     rendered-worker-f77322e2feead61600f41c9ae9ed0ff7   rendered-worker-112b254dd5952a5af59b7f7639490026   False     True             True             False                      False            False     True                False          False            True           True          False          False            False
 ```
 
 *After the body of the upgrade completes, either UPDATEPOSTACTIONCOMPLETE or REBOOTEDNODE begins, depending on the update needs.*
 ```console
-NAME                          POOLNAME   DESIREDCONFIG                                      CURRENTCONFIG                                      UPDATED   UPDATEPREPARED   UPDATEEXECUTED   UPDATEPOSTACTIONCOMPLETE   UPDATECOMPLETE   RESUMED   UPDATEDFILESANDOS   CORDONEDNODE   DRAINEDNODE   REBOOTEDNODE   UNCORDONEDNODE
-ip-10-0-16-253.ec2.internal   master     rendered-master-ceedbbb3b533372a501c2410fa554c89   rendered-master-6c320f722eb9ce8bfbd80750dbf70d2e   False     True             True             False                      False            False     True                True           True          Unknown        False          
-ip-10-0-16-61.ec2.internal    worker     rendered-worker-f77322e2feead61600f41c9ae9ed0ff7   rendered-worker-f77322e2feead61600f41c9ae9ed0ff7   True      False            False            False                      False            False     False               False          False         False          False          
-ip-10-0-32-167.ec2.internal   master     rendered-master-6c320f722eb9ce8bfbd80750dbf70d2e   rendered-master-6c320f722eb9ce8bfbd80750dbf70d2e   True      False            False            False                      False            False     False               False          False         False          False          
-ip-10-0-63-242.ec2.internal   worker     rendered-worker-f77322e2feead61600f41c9ae9ed0ff7   rendered-worker-f77322e2feead61600f41c9ae9ed0ff7   True      False            False            False                      False            False     False               False          False         False          False          
-ip-10-0-65-65.ec2.internal    worker     rendered-worker-f77322e2feead61600f41c9ae9ed0ff7   rendered-worker-f77322e2feead61600f41c9ae9ed0ff7   True      False            False            False                      False            False     False               False          False         False          False          
-ip-10-0-73-121.ec2.internal   master     rendered-master-6c320f722eb9ce8bfbd80750dbf70d2e   rendered-master-6c320f722eb9ce8bfbd80750dbf70d2e   True      False            False            False                      False            False     False               False          False         False          False          
+$ oc get machineconfignodes -o wide
+NAME                          POOLNAME   DESIREDCONFIG                                      CURRENTCONFIG                                      UPDATED   UPDATEPREPARED   UPDATEEXECUTED   UPDATEPOSTACTIONCOMPLETE   UPDATECOMPLETE   RESUMED   UPDATEDFILESANDOS   APPLIEDFILES   APPLIEDOSIMAGE   CORDONEDNODE   DRAINEDNODE   REBOOTEDNODE   UNCORDONEDNODE   IMAGEPULLEDFROMREGISTRY
+ip-10-0-4-60.ec2.internal     worker     rendered-worker-f77322e2feead61600f41c9ae9ed0ff7   rendered-worker-112b254dd5952a5af59b7f7639490026   False     True             True             False                      False            False     True                False          False            True           True          Unknown        False            False
 ```
 
 ```console
-NAME                          POOLNAME   DESIREDCONFIG                                      CURRENTCONFIG                                      UPDATED   UPDATEPREPARED   UPDATEEXECUTED   UPDATEPOSTACTIONCOMPLETE   UPDATECOMPLETE   RESUMED   UPDATEDFILESANDOS   CORDONEDNODE   DRAINEDNODE   REBOOTEDNODE   UNCORDONEDNODE
-ip-10-0-16-253.ec2.internal   master     rendered-master-ceedbbb3b533372a501c2410fa554c89   rendered-master-6c320f722eb9ce8bfbd80750dbf70d2e   False     True             True             False                      False            False     True                True           True          True           False          
-ip-10-0-16-61.ec2.internal    worker     rendered-worker-f77322e2feead61600f41c9ae9ed0ff7   rendered-worker-f77322e2feead61600f41c9ae9ed0ff7   True      False            False            False                      False            False     False               False          False         False          False          
-ip-10-0-32-167.ec2.internal   master     rendered-master-6c320f722eb9ce8bfbd80750dbf70d2e   rendered-master-6c320f722eb9ce8bfbd80750dbf70d2e   True      False            False            False                      False            False     False               False          False         False          False          
-ip-10-0-63-242.ec2.internal   worker     rendered-worker-f77322e2feead61600f41c9ae9ed0ff7   rendered-worker-f77322e2feead61600f41c9ae9ed0ff7   True      False            False            False                      False            False     False               False          False         False          False          
-ip-10-0-65-65.ec2.internal    worker     rendered-worker-f77322e2feead61600f41c9ae9ed0ff7   rendered-worker-f77322e2feead61600f41c9ae9ed0ff7   True      False            False            False                      False            False     False               False          False         False          False          
-ip-10-0-73-121.ec2.internal   master     rendered-master-6c320f722eb9ce8bfbd80750dbf70d2e   rendered-master-6c320f722eb9ce8bfbd80750dbf70d2e   True      False            False            False                      False            False     False               False          False         False          False          
+$ oc get machineconfignodes -o wide
+NAME                          POOLNAME   DESIREDCONFIG                                      CURRENTCONFIG                                      UPDATED   UPDATEPREPARED   UPDATEEXECUTED   UPDATEPOSTACTIONCOMPLETE   UPDATECOMPLETE   RESUMED   UPDATEDFILESANDOS   APPLIEDFILES   APPLIEDOSIMAGE   CORDONEDNODE   DRAINEDNODE   REBOOTEDNODE   UNCORDONEDNODE   IMAGEPULLEDFROMREGISTRY
+ip-10-0-4-60.ec2.internal     worker     rendered-worker-f77322e2feead61600f41c9ae9ed0ff7   rendered-worker-112b254dd5952a5af59b7f7639490026   False     True             True             False                      False            False     True                False          False            True           True          True           False            False
 ```
 
-*After the post update action completes, normal processes are RESUMED.*
+*After the post update action or reboot completes, normal processes are RESUMED.*
 ```console
-NAME                          POOLNAME   DESIREDCONFIG                                      CURRENTCONFIG                                      UPDATED   UPDATEPREPARED   UPDATEEXECUTED   UPDATEPOSTACTIONCOMPLETE   UPDATECOMPLETE   RESUMED   UPDATEDFILESANDOS   CORDONEDNODE   DRAINEDNODE   REBOOTEDNODE   UNCORDONEDNODE
-ip-10-0-16-253.ec2.internal   master     rendered-master-ceedbbb3b533372a501c2410fa554c89   rendered-master-6c320f722eb9ce8bfbd80750dbf70d2e   False     True             True             False                      False            True      True                True           True          True           False          
-ip-10-0-16-61.ec2.internal    worker     rendered-worker-f77322e2feead61600f41c9ae9ed0ff7   rendered-worker-f77322e2feead61600f41c9ae9ed0ff7   True      False            False            False                      False            False     False               False          False         False          False          
-ip-10-0-32-167.ec2.internal   master     rendered-master-6c320f722eb9ce8bfbd80750dbf70d2e   rendered-master-6c320f722eb9ce8bfbd80750dbf70d2e   True      False            False            False                      False            False     False               False          False         False          False          
-ip-10-0-63-242.ec2.internal   worker     rendered-worker-f77322e2feead61600f41c9ae9ed0ff7   rendered-worker-f77322e2feead61600f41c9ae9ed0ff7   True      False            False            False                      False            False     False               False          False         False          False          
-ip-10-0-65-65.ec2.internal    worker     rendered-worker-f77322e2feead61600f41c9ae9ed0ff7   rendered-worker-f77322e2feead61600f41c9ae9ed0ff7   True      False            False            False                      False            False     False               False          False         False          False          
-ip-10-0-73-121.ec2.internal   master     rendered-master-6c320f722eb9ce8bfbd80750dbf70d2e   rendered-master-6c320f722eb9ce8bfbd80750dbf70d2e   True      False            False            False                      False            False     False               False          False         False          False          
+$ oc get machineconfignodes -o wide
+NAME                          POOLNAME   DESIREDCONFIG                                      CURRENTCONFIG                                      UPDATED   UPDATEPREPARED   UPDATEEXECUTED   UPDATEPOSTACTIONCOMPLETE   UPDATECOMPLETE   RESUMED   UPDATEDFILESANDOS   APPLIEDFILES   APPLIEDOSIMAGE   CORDONEDNODE   DRAINEDNODE   REBOOTEDNODE   UNCORDONEDNODE   IMAGEPULLEDFROMREGISTRY
+ip-10-0-4-60.ec2.internal     worker     rendered-worker-f77322e2feead61600f41c9ae9ed0ff7   rendered-worker-112b254dd5952a5af59b7f7639490026   False     True             True             False                      False            True      True                False          False            True           True          True           False            False
 ```
 
 *The final parts of the update are completed in UPDATECOMPLETE and its child phase, UNCORDONEDNODE.*
 ```console
 $ oc get machineconfignodes
-NAME                          POOLNAME   DESIREDCONFIG                                      CURRENTCONFIG                                      UPDATED   UPDATEPREPARED   UPDATEEXECUTED   UPDATEPOSTACTIONCOMPLETE   UPDATECOMPLETE   RESUMED   UPDATEDFILESANDOS   CORDONEDNODE   DRAINEDNODE   REBOOTEDNODE   UNCORDONEDNODE
-ip-10-0-16-253.ec2.internal   master     rendered-master-ceedbbb3b533372a501c2410fa554c89   rendered-master-6c320f722eb9ce8bfbd80750dbf70d2e   False     True             True             False                      True             True      True                True           True          True           True           
-ip-10-0-16-61.ec2.internal    worker     rendered-worker-f77322e2feead61600f41c9ae9ed0ff7   rendered-worker-f77322e2feead61600f41c9ae9ed0ff7   True      False            False            False                      False            False     False               False          False         False          False          
-ip-10-0-32-167.ec2.internal   master     rendered-master-6c320f722eb9ce8bfbd80750dbf70d2e   rendered-master-6c320f722eb9ce8bfbd80750dbf70d2e   True      False            False            False                      False            False     False               False          False         False          False          
-ip-10-0-63-242.ec2.internal   worker     rendered-worker-f77322e2feead61600f41c9ae9ed0ff7   rendered-worker-f77322e2feead61600f41c9ae9ed0ff7   True      False            False            False                      False            False     False               False          False         False          False          
-ip-10-0-65-65.ec2.internal    worker     rendered-worker-f77322e2feead61600f41c9ae9ed0ff7   rendered-worker-f77322e2feead61600f41c9ae9ed0ff7   True      False            False            False                      False            False     False               False          False         False          False          
-ip-10-0-73-121.ec2.internal   master     rendered-master-6c320f722eb9ce8bfbd80750dbf70d2e   rendered-master-6c320f722eb9ce8bfbd80750dbf70d2e   True      False            False            False                      False            False     False               False          False         False          False          
+NAME                          POOLNAME   DESIREDCONFIG                                      CURRENTCONFIG                                      UPDATED   UPDATEPREPARED   UPDATEEXECUTED   UPDATEPOSTACTIONCOMPLETE   UPDATECOMPLETE   RESUMED   UPDATEDFILESANDOS   APPLIEDFILES   APPLIEDOSIMAGE   CORDONEDNODE   DRAINEDNODE   REBOOTEDNODE   UNCORDONEDNODE   IMAGEPULLEDFROMREGISTRY
+ip-10-0-4-60.ec2.internal     worker     rendered-worker-f77322e2feead61600f41c9ae9ed0ff7   rendered-worker-112b254dd5952a5af59b7f7639490026   False     True             True             False                      True             True      True                False          False            True           True          True           True             False
 ```
 
 *When the desired and current config versions of the node match, UPDATED will flip back to True and all other statuses will flip to False. This marks the completion of the update.*
 ```console
 $ oc get machineconfignodes
-NAME                          POOLNAME   DESIREDCONFIG                                      CURRENTCONFIG                                      UPDATED   UPDATEPREPARED   UPDATEEXECUTED   UPDATEPOSTACTIONCOMPLETE   UPDATECOMPLETE   RESUMED   UPDATEDFILESANDOS   CORDONEDNODE   DRAINEDNODE   REBOOTEDNODE   UNCORDONEDNODE
-ip-10-0-16-253.ec2.internal   master     rendered-master-ceedbbb3b533372a501c2410fa554c89   rendered-master-ceedbbb3b533372a501c2410fa554c89   True      False            False            False                      False            False     False               False          False         False          False          
-ip-10-0-16-61.ec2.internal    worker     rendered-worker-f77322e2feead61600f41c9ae9ed0ff7   rendered-worker-f77322e2feead61600f41c9ae9ed0ff7   True      False            False            False                      False            False     False               False          False         False          False          
-ip-10-0-32-167.ec2.internal   master     rendered-master-6c320f722eb9ce8bfbd80750dbf70d2e   rendered-master-6c320f722eb9ce8bfbd80750dbf70d2e   True      False            False            False                      False            False     False               False          False         False          False          
-ip-10-0-63-242.ec2.internal   worker     rendered-worker-f77322e2feead61600f41c9ae9ed0ff7   rendered-worker-f77322e2feead61600f41c9ae9ed0ff7   True      False            False            False                      False            False     False               False          False         False          False          
-ip-10-0-65-65.ec2.internal    worker     rendered-worker-f77322e2feead61600f41c9ae9ed0ff7   rendered-worker-f77322e2feead61600f41c9ae9ed0ff7   True      False            False            False                      False            False     False               False          False         False          False          
-ip-10-0-73-121.ec2.internal   master     rendered-master-6c320f722eb9ce8bfbd80750dbf70d2e   rendered-master-6c320f722eb9ce8bfbd80750dbf70d2e   True      False            False            False                      False            False     False               False          False         False          False          
+NAME                          POOLNAME   DESIREDCONFIG                                      CURRENTCONFIG                                      UPDATED   UPDATEPREPARED   UPDATEEXECUTED   UPDATEPOSTACTIONCOMPLETE   UPDATECOMPLETE   RESUMED   UPDATEDFILESANDOS   APPLIEDFILES   APPLIEDOSIMAGE   CORDONEDNODE   DRAINEDNODE   REBOOTEDNODE   UNCORDONEDNODE   IMAGEPULLEDFROMREGISTRY
+ip-10-0-4-60.ec2.internal     worker     rendered-worker-f77322e2feead61600f41c9ae9ed0ff7   rendered-worker-f77322e2feead61600f41c9ae9ed0ff7   True      False            False            False                      False            False     False               False          False            False          False         False          False            False
 ```
 
 In general, a state (and its respective child states) will transition from False -> Unknown -> True -> False. The states are mostly in the past tense. This is because processes like `Drained` are primarily defined by completion, not the progress. So a user will have `UpdateExecuted` == Unknown and `Drained` == Unknown until the Drain actually completes. However, the unknown phase will be accompanied by a message for how the drain is currently going or if an error has occurred during the drain.
@@ -441,6 +418,8 @@ Metadata:
 Spec:
   Config Version:
     Desired:  rendered-master-7de7db7349148346f2cfd55ca51582cc
+  Config Image:
+    Desired:  image-registry.openshift-image-registry.svc:5000/openshift-machine-config-operator/ocb-image@sha256:6600f777a1d8b3b5be31f483189b5dc813799fe45bb2ba18b5742b58e27e9387
   Node:
     Name:  ip-10-0-20-154.ec2.internal
   Pool:
@@ -478,6 +457,11 @@ Status:
     Status:                False
     Type:                  Resumed
     Last Transition Time:  2025-05-22T14:20:30Z
+    Message:               Image 'image-registry.openshift-image-registry.svc:5000/openshift-machine-config-operator/ocb-image@sha256:6600f777a1d8b3b5be31f483189b5dc813799fe45bb2ba18b5742b58e27e9387' pulled from registry.
+    Reason:                UpdateExecutedImagePulledFromRegistry
+    Status:                True
+    Type:                  ImagePulledFromRegistry
+    Last Transition Time:  2025-05-22T14:20:30Z
     Message:               Drained node. The drain is complete as the desired drainer matches current drainer: drain-rendered-master-7de7db7349148346f2cfd55ca51582cc
     Reason:                UpdateExecutedDrained
     Status:                True
@@ -487,6 +471,16 @@ Status:
     Reason:                UpdateExecutedAppliedFilesAndOS
     Status:                Unknown
     Type:                  AppliedFilesAndOS
+    Last Transition Time:  2025-05-22T14:17:58Z
+    Message:               Applied files. OS did not need an update. SSH Keys did not need an update.
+    Reason:                UpdateExecutedAppliedFiles
+    Status:                True
+    Type:                  AppliedFiles
+    Last Transition Time:  2025-05-22T14:17:58Z
+    Message:               OS did not need an update.
+    Reason:                UpdateExecutedAppliedOSImage
+    Status:                False
+    Type:                  AppliedOSImage
     Last Transition Time:  2025-05-22T14:17:58Z
     Message:               Cordoned node. The node is reporting Unschedulable = true
     Reason:                UpdateExecutedCordoned
@@ -520,6 +514,9 @@ Status:
   Config Version:
     Current:            rendered-master-78c005824ab643a5e2ac917f028b570f
     Desired:            rendered-master-7de7db7349148346f2cfd55ca51582cc
+  Config Image:
+    Current:            machineconfiguration.openshift.io/currentImage: image-registry.openshift-image-registry.svc:5000/openshift-machine-config-operator/ocb-image@sha256:6600f777a1d8b3b5be31f483189b5dc813799fe45bb2ba18b5742b58e27e9387
+    Desired:            machineconfiguration.openshift.io/desiredImage: image-registry.openshift-image-registry.svc:5000/openshift-machine-config-operator/ocb-image@sha256:6600f777a1d8b3b5be31f483189b5dc813799fe45bb2ba18b5742b58e27e9387
   Observed Generation:  5
 Events:                 <none>
 ```
@@ -545,6 +542,143 @@ or
 ```
 
 The first option here indicates that this phase has never happened. The second one indicates that it has happened, just not during this update cycle. That is what the `Action during update to...` shows. That rendered config is not the one we are updating to currently.
+
+#### OnClusterLayering-Enabled Update Flow
+When on-cluster image mode is enabled and a user triggers an on-cluster image mode update, the update statuses should be reflected differently in the MCN resources to better match the steps taken in that update process. When an upgrade is triggered by there being a mismatch between a desired and current image or simply just a new MC or Containerfile change being applied, the MCNs for a specific pool will report the following phases. Note that, like in the previous update section, all phases will exist in the MCN object during the update, but the mermaid diagram below has been condensed to only highlight the conditions relevant to on-cluster image mode-style updates.
+
+```mermaid
+block-beta
+  columns 16
+    block:parents:16
+        columns 16
+        parentTitle("Parent Phases")
+        space:17
+        updatePrepared["UpdatePrepared"] space:4
+        updateExecuted["UpdateExecuted"] space:2
+        rebootedNode["RebootedNode"] space
+        updateComplete["UpdateComplete"] space
+        updated["Updated"]
+        space:6
+        space:13
+    end
+
+    updatePrepared --> updateExecuted
+    updateExecuted --> rebootedNode
+    rebootedNode --> updateComplete
+    updateComplete --> updated
+
+  space:16
+
+    block:children:16
+        columns 16
+        childTitle("Child Phases")
+        space:16
+        imageBuilt["ImageBuilt"] space
+        imagePushedToRegistry["ImagePushedToRegistry"] space
+        imagePulledFromRegistry["ImagePulledFromRegistry"]
+        cordoned["Cordoned"]
+        drained["Drained"]
+        appliedOSImage["AppliedOSImage"] 
+        appliedFiles["AppliedFiles"] space:2
+        uncordoned["Uncordoned"] space:2
+        space:14
+    end
+
+    imageBuilt --> updatePrepared
+    imagePushedToRegistry --> updatePrepared
+    imagePulledFromRegistry --> updateExecuted
+    cordoned --> updateExecuted
+    drained --> updateExecuted
+    appliedOSImage --> updateExecuted
+    appliedFiles --> updateExecuted
+    uncordoned --> updateComplete
+
+class parents PhaseGroup
+class children PhaseGroup
+classDef PhaseGroup fill:#f5f5f5,stroke-dasharray:10,10,stroke-width:2px,stroke:#000
+
+class parentTitle PhaseTitle
+class childTitle PhaseTitle
+classDef PhaseTitle stroke:transparent,fill:transparent,font-weight:bold,font-size:1.25em,color:#000
+
+class updatePrepared,updateExecuted,imageBuilt,imagePushedToRegistry,imagePulledFromRegistry,updateComplete,updated,cordoned,drained,appliedOSImage,appliedFiles,rebootedNode,uncordoned Phase
+classDef Phase font-weight:bold,fill:#bbbbbb,stroke:#000,color:#000
+```
+
+*Before an update is triggered, UPDATED will be True and all other statuses will be False.*
+```console
+$ oc get machineconfignodes -o wide
+NAME                          POOLNAME   DESIREDCONFIG                                      CURRENTCONFIG                                      UPDATED   UPDATEPREPARED   UPDATEEXECUTED   UPDATEPOSTACTIONCOMPLETE   UPDATECOMPLETE   RESUMED   UPDATEDFILESANDOS   APPLIEDFILES   APPLIEDOSIMAGE   CORDONEDNODE   DRAINEDNODE   REBOOTEDNODE   UNCORDONEDNODE   IMAGEPULLEDFROMREGISTRY
+ip-10-0-4-60.ec2.internal     worker     rendered-worker-112b254dd5952a5af59b7f7639490026   rendered-worker-112b254dd5952a5af59b7f7639490026   True      False            False            False                      False            False     False               False          False            False          False         False          False            False
+```
+
+*Once an update is triggered, UPDATED will flip to False and UPDATEPREPARED begins.*
+```console
+$ oc get machineconfignodes -o wide
+NAME                          POOLNAME   DESIREDCONFIG                                      CURRENTCONFIG                                      UPDATED   UPDATEPREPARED   UPDATEEXECUTED   UPDATEPOSTACTIONCOMPLETE   UPDATECOMPLETE   RESUMED   UPDATEDFILESANDOS   APPLIEDFILES   APPLIEDOSIMAGE   CORDONEDNODE   DRAINEDNODE   REBOOTEDNODE   UNCORDONEDNODE   IMAGEPULLEDFROMREGISTRY
+ip-10-0-4-60.ec2.internal     worker     rendered-worker-f77322e2feead61600f41c9ae9ed0ff7   rendered-worker-112b254dd5952a5af59b7f7639490026   False     True             False            False                      False            False     False               False          False            False          False         False          False            False
+```
+
+After the update prepared phase completes, UPDATEEXECUTED and its children phases, IMAGEPULLEDFROMREGISTRY, CORDONEDNODE, DRAINEDNODE, APPLIEDOSIMAGE, and APPLIEDFILES, begin.*
+```console
+$ oc get machineconfignodes -o wide
+NAME                          POOLNAME   DESIREDCONFIG                                      CURRENTCONFIG                                      UPDATED   UPDATEPREPARED   UPDATEEXECUTED   UPDATEPOSTACTIONCOMPLETE   UPDATECOMPLETE   RESUMED   UPDATEDFILESANDOS   APPLIEDFILES   APPLIEDOSIMAGE   CORDONEDNODE   DRAINEDNODE   REBOOTEDNODE   UNCORDONEDNODE   IMAGEPULLEDFROMREGISTRY
+ip-10-0-4-60.ec2.internal     worker     rendered-worker-f77322e2feead61600f41c9ae9ed0ff7   rendered-worker-112b254dd5952a5af59b7f7639490026   False     True             Unknown          False                      False            False     False               False          False            False          False         False          False            True
+```
+
+```console
+$ oc get machineconfignodes -o wide
+NAME                          POOLNAME   DESIREDCONFIG                                      CURRENTCONFIG                                      UPDATED   UPDATEPREPARED   UPDATEEXECUTED   UPDATEPOSTACTIONCOMPLETE   UPDATECOMPLETE   RESUMED   UPDATEDFILESANDOS   APPLIEDFILES   APPLIEDOSIMAGE   CORDONEDNODE   DRAINEDNODE   REBOOTEDNODE   UNCORDONEDNODE   IMAGEPULLEDFROMREGISTRY
+ip-10-0-4-60.ec2.internal     worker     rendered-worker-f77322e2feead61600f41c9ae9ed0ff7   rendered-worker-112b254dd5952a5af59b7f7639490026   False     True             Unknown          False                      False            False     False               False          False            True           Unknown       False          False            True
+```
+
+```console
+$ oc get machineconfignodes -o wide
+NAME                          POOLNAME   DESIREDCONFIG                                      CURRENTCONFIG                                      UPDATED   UPDATEPREPARED   UPDATEEXECUTED   UPDATEPOSTACTIONCOMPLETE   UPDATECOMPLETE   RESUMED   UPDATEDFILESANDOS   APPLIEDFILES   APPLIEDOSIMAGE   CORDONEDNODE   DRAINEDNODE   REBOOTEDNODE   UNCORDONEDNODE   IMAGEPULLEDFROMREGISTRY
+ip-10-0-4-60.ec2.internal     worker     rendered-worker-f77322e2feead61600f41c9ae9ed0ff7   rendered-worker-112b254dd5952a5af59b7f7639490026   False     True             Unknown          False                      False            False     False               Unknown        Unknown          True           True          False          False            True
+```
+
+```console
+$ oc get machineconfignodes -o wide
+NAME                          POOLNAME   DESIREDCONFIG                                      CURRENTCONFIG                                      UPDATED   UPDATEPREPARED   UPDATEEXECUTED   UPDATEPOSTACTIONCOMPLETE   UPDATECOMPLETE   RESUMED   UPDATEDFILESANDOS   APPLIEDFILES   APPLIEDOSIMAGE   CORDONEDNODE   DRAINEDNODE   REBOOTEDNODE   UNCORDONEDNODE   IMAGEPULLEDFROMREGISTRY
+ip-10-0-4-60.ec2.internal     worker     rendered-worker-f77322e2feead61600f41c9ae9ed0ff7   rendered-worker-112b254dd5952a5af59b7f7639490026   False     True             True             False                      False            False     False               True           True             True           True          False          False            True
+```
+
+*After the body of the upgrade completes, REBOOTEDNODE begins.*
+```console
+$ oc get machineconfignodes -o wide
+NAME                          POOLNAME   DESIREDCONFIG                                      CURRENTCONFIG                                      UPDATED   UPDATEPREPARED   UPDATEEXECUTED   UPDATEPOSTACTIONCOMPLETE   UPDATECOMPLETE   RESUMED   UPDATEDFILESANDOS   APPLIEDFILES   APPLIEDOSIMAGE   CORDONEDNODE   DRAINEDNODE   REBOOTEDNODE   UNCORDONEDNODE   IMAGEPULLEDFROMREGISTRY
+ip-10-0-4-60.ec2.internal     worker     rendered-worker-f77322e2feead61600f41c9ae9ed0ff7   rendered-worker-112b254dd5952a5af59b7f7639490026   False     True             True             False                      False            False     False               True           True             True           True          Unknown        False            True
+```
+
+```console
+$ oc get machineconfignodes -o wide
+NAME                          POOLNAME   DESIREDCONFIG                                      CURRENTCONFIG                                      UPDATED   UPDATEPREPARED   UPDATEEXECUTED   UPDATEPOSTACTIONCOMPLETE   UPDATECOMPLETE   RESUMED   UPDATEDFILESANDOS   APPLIEDFILES   APPLIEDOSIMAGE   CORDONEDNODE   DRAINEDNODE   REBOOTEDNODE   UNCORDONEDNODE   IMAGEPULLEDFROMREGISTRY
+ip-10-0-4-60.ec2.internal     worker     rendered-worker-f77322e2feead61600f41c9ae9ed0ff7   rendered-worker-112b254dd5952a5af59b7f7639490026   False     True             True             False                      False            False     False               True           True             True           True          True           False            True
+```
+
+*After the node is rebooted, normal processes are RESUMED.*
+```console
+$ oc get machineconfignodes -o wide
+NAME                          POOLNAME   DESIREDCONFIG                                      CURRENTCONFIG                                      UPDATED   UPDATEPREPARED   UPDATEEXECUTED   UPDATEPOSTACTIONCOMPLETE   UPDATECOMPLETE   RESUMED   UPDATEDFILESANDOS   APPLIEDFILES   APPLIEDOSIMAGE   CORDONEDNODE   DRAINEDNODE   REBOOTEDNODE   UNCORDONEDNODE   IMAGEPULLEDFROMREGISTRY
+ip-10-0-4-60.ec2.internal     worker     rendered-worker-f77322e2feead61600f41c9ae9ed0ff7   rendered-worker-112b254dd5952a5af59b7f7639490026   False     True             True             False                      False            True      False               True           True             True           True          True           False            True
+```
+
+*The final parts of the update are completed in UPDATECOMPLETE and its child phase, UNCORDONEDNODE.*
+```console
+$ oc get machineconfignodes
+NAME                          POOLNAME   DESIREDCONFIG                                      CURRENTCONFIG                                      UPDATED   UPDATEPREPARED   UPDATEEXECUTED   UPDATEPOSTACTIONCOMPLETE   UPDATECOMPLETE   RESUMED   UPDATEDFILESANDOS   APPLIEDFILES   APPLIEDOSIMAGE   CORDONEDNODE   DRAINEDNODE   REBOOTEDNODE   UNCORDONEDNODE   IMAGEPULLEDFROMREGISTRY
+ip-10-0-4-60.ec2.internal     worker     rendered-worker-f77322e2feead61600f41c9ae9ed0ff7   rendered-worker-112b254dd5952a5af59b7f7639490026   False     True             True             False                      True             True      False               True           True             True           True          True           True             True
+```
+
+*When the desired and current images of the node match, UPDATED will flip back to True and all other statuses will flip to False. This marks the completion of the update.*
+```console
+$ oc get machineconfignodes
+NAME                          POOLNAME   DESIREDCONFIG                                      CURRENTCONFIG                                      UPDATED   UPDATEPREPARED   UPDATEEXECUTED   UPDATEPOSTACTIONCOMPLETE   UPDATECOMPLETE   RESUMED   UPDATEDFILESANDOS   APPLIEDFILES   APPLIEDOSIMAGE   CORDONEDNODE   DRAINEDNODE   REBOOTEDNODE   UNCORDONEDNODE   IMAGEPULLEDFROMREGISTRY
+ip-10-0-4-60.ec2.internal     worker     rendered-worker-f77322e2feead61600f41c9ae9ed0ff7   rendered-worker-f77322e2feead61600f41c9ae9ed0ff7   True      False            False            False                      False            False     False               False          False            False          False         False          False            False
+```
+
+As in the previous standard update example, `oc describe machineconfignodes/<node-name>` will give more information on the status of each phase of the update and highlight any node degredations.
 
 #### MCP Status Reporting
 The MCO in 4.15 aimed to use the MCN objects to improve the source of truth for MCP reporting. In other words, MCPs pulled their `Updated`, `Updating`, and `Degraded` statuses from the MCN objects rather than from the nodes themselves. However, due to bugs presented by the original implementation of this idea (see [OCPBUGS-32812](https://issues.redhat.com/browse/OCPBUGS-32812)), populating MCP statuses from the MCN is targeted to be implemented in 4.20 (see [MCO-1228](https://issues.redhat.com/browse/MCO-1228)) as part of the [Status Reporting GA](https://issues.redhat.com/browse/MCO-1506) work.
@@ -653,12 +787,12 @@ Not applicable. Feature introduced in Tech Preview.
 
 For the 4.19 GA of MCN (see [MCO-836](https://issues.redhat.com/browse/MCO-836)):
 - Bug fixes
-- MCN properly reports status transitions on standard, non-OnClusterLayering (OCL), updates
+- MCN properly reports status transitions on standard, not on-cluster image mode, updates
 - MCN properly handles the status reporting for PIS
 
 For the 4.20 GA of Status Reporting (see [MCO-1506](https://issues.redhat.com/browse/MCO-1506)), an extension of the mvp MCN functionality:
 - Bug fixes
-- MCN properly reports status transitions for all existing node update paths, including OCL updates
+- MCN properly reports status transitions for all existing node update paths, including on-cluster image mode updates
 - MCN properly handles MCP status updating
 
 #### Removing a deprecated feature
