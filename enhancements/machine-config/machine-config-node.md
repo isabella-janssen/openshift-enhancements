@@ -546,6 +546,223 @@ or
 
 The first option here indicates that this phase has never happened. The second one indicates that it has happened, just not during this update cycle. That is what the `Action during update to...` shows. That rendered config is not the one we are updating to currently.
 
+#### OnClusterLayering-Enabled Update Flow
+<!-- Note that OCL should probably be renamed Image Mode for Openshift to match the change being made in the official Openshift docs. -->
+When OnClusterLayering (OCL) is enabled, the update statuses should be reflected differently in the MCN resources to better match the steps taken in the update process. When an upgrade is triggered by there being a mismatch between a desired and current image or simply just a new MC or Containerfile  change being applied, the MCNs for a specific pool will report the following phases.
+
+```mermaid
+block-beta
+  columns 14
+    block:parents:14
+        columns 13
+        parentTitle("Parent Phases")
+        space:6
+        updatePostActionComplete["UpdatePostActionComplete"] space:6
+        imageBuilt["ImageBuilt"] space
+        imagePushedToRegistry["ImagePushedToRegistry"] space
+        imageRolledOutToNode["ImageRolledOutToNode"] space:3
+        updateComplete["UpdateComplete"] space
+        updated["Updated"]
+        space:8
+        rebootedNode["RebootedNode"]
+    end
+
+    imageBuilt --> imagePushedToRegistry
+    imagePushedToRegistry --> imageRolledOutToNode
+    imageRolledOutToNode --> updatePostActionComplete
+    imageRolledOutToNode --> rebootedNode
+    updatePostActionComplete --> updateComplete
+    rebootedNode --> updateComplete
+    updateComplete --> updated
+
+  space:14
+
+    block:children:14
+        columns 13
+        childTitle("Child Phases")
+        space:29
+        imagePulledFromRegistry["ImagePulledFromRegistry"] space
+        imageAppliedToNode["ImageAppliedToNode"]
+    end
+
+    imagePulledFromRegistry --> imageRolledOutToNode
+    imageAppliedToNode --> imageRolledOutToNode
+
+class parents PhaseGroup
+class children PhaseGroup
+classDef PhaseGroup fill:#f5f5f5,stroke-dasharray:10,10,stroke-width:2px,stroke:#000
+
+class parentTitle PhaseTitle
+class childTitle PhaseTitle
+classDef PhaseTitle stroke:transparent,fill:transparent,font-weight:bold,font-size:1.25em,color:#000
+
+class imageBuilt,imagePushedToRegistry,imageRolledOutToNode,updatePostActionComplete,updateComplete,updated,imagePulledFromRegistry,imageAppliedToNode,rebootedNode Phase
+classDef Phase font-weight:bold,fill:#bbbbbb,stroke:#000,color:#000
+```
+
+The information shown in `oc get machineconfignodes` includes the Node's name, associated MCP, current and desired config versions, and updated status. Using `oc describe machineconfignodes -o wide` will additionally reveal all parent and child phases. Within each parent phase there can be 0+ child phases that customers can use to see upgrade progression. The upgrade flow can be seen in the following diagram and in the subsequent example outputs.
+
+
+*Before an update is triggered, UPDATED will be True and all other statuses will be False.*
+```console
+$ oc get machineconfignodes -o wide
+
+```
+
+*Once an update is triggered, UPDATED will flip to False and the process of building the image for the update, represented in IMAGEBUILT, begins.*
+```console
+$ oc get machineconfignodes -o wide
+
+```
+
+*After the image is built, the image is pushed to the image registry as IMAGEPUSHEDTOREGISTRY begins.*
+```console
+$ oc get machineconfignodes -o wide
+
+```
+
+*After the image is pushed to the image registry, IMAGEROLLEDOUTTONODE and its children phases, IMAGEPULLEDFROMREGISTRY and IMAGEAPPLIEDTONODE, begin.*
+```console
+$ oc get machineconfignodes -o wide
+
+```
+
+```console
+$ oc get machineconfignodes -o wide
+
+```
+
+*After the body of the upgrade completes, either UPDATEPOSTACTIONCOMPLETE or REBOOTEDNODE begins, depending on the update needs.*
+```console
+$ oc get machineconfignodes -o wide
+
+```
+
+*The final parts of the update are completed in UPDATECOMPLETE.*
+```console
+$ oc get machineconfignodes
+
+```
+
+<!-- NOTE: need to understand OCL's "updated" condition. -->
+*When the desired and current config versions of the node match, UPDATED will flip back to True and all other statuses will flip to False. This marks the completion of the update.*
+```console
+$ oc get machineconfignodes
+
+```
+
+If you want to look at oc describe for more verbose details of other events in an upgrade cycle that happened on the node, you can do so using `oc describe machineconfignodes/<node-name>`. This will also show information about a degraded node, if applicable, as can be seen in the following example output (note that the output below is not correlated to the above example).
+
+<!-- TODO: still need to understand if this can contain only OCL stages if it's enabled. -->
+<!-- NOTE: condensed for clarity -->
+```console
+$ oc describe machineconfignode/ip-10-0-20-154.ec2.internal
+Name:         ip-10-0-20-154.ec2.internal
+Namespace:    
+Labels:       <none>
+Annotations:  <none>
+API Version:  machineconfiguration.openshift.io/v1
+Kind:         MachineConfigNode
+Metadata:
+  Creation Timestamp:  2025-05-22T12:32:13Z
+  Generation:          4
+  Owner References:
+    API Version:     v1
+    Kind:            Node
+    Name:            ip-10-0-20-154.ec2.internal
+    UID:             a8f61760-2e07-4358-bd8c-c48e716f60a7
+  Resource Version:  73071
+  UID:               1784fcc7-b064-495a-a4e9-8a268fb47c2d
+Spec:
+  Config Version:
+    Desired:  rendered-master-7de7db7349148346f2cfd55ca51582cc
+  Config Image:
+    Desired:  <fill-in>
+  Node:
+    Name:  ip-10-0-20-154.ec2.internal
+  Pool:
+    Name:  master
+Status:
+  Conditions:
+...
+    Last Transition Time:  2025-05-22T12:32:20Z
+    Message:               This node has not yet entered the UpdatePostActionComplete phase
+    Reason:                NotYetOccurred
+    Status:                False
+    Type:                  UpdatePostActionComplete
+    Last Transition Time:  2025-05-22T12:33:26Z
+    Message:               Action during update to not-yet-set
+    Reason:                UpdateComplete
+    Status:                False
+    Type:                  UpdateComplete
+    Last Transition Time:  2025-05-22T12:32:20Z
+    Message:               This node has not yet entered the RebootedNode phase
+    Reason:                NotYetOccurred
+    Status:                False
+    Type:                  RebootedNode
+    Last Transition Time:  2025-05-22T14:17:53Z
+    Message:               Node ip-10-0-20-154.ec2.internal needs an update
+    Reason:                Updated
+    Status:                False
+    Type:                  Updated
+    Last Transition Time:  2025-05-22T14:20:35Z
+    Message:               Node ip-10-0-20-154.ec2.internal upgrade failure. rename /home/.core1131580553 /home/core: file exists
+    Reason:                NodeDegraded
+    Status:                True
+    Type:                  NodeDegraded
+
+    Last Transition Time:  2025-05-22T12:32:20Z
+    Message:               This node has not yet entered the ImageBuilt phase
+    Reason:                NotYetOccurred
+    Status:                False
+    Type:                  ImageBuilt
+    Last Transition Time:  2025-05-22T12:32:20Z
+    Message:               This node has not yet entered the ImagePushedToRegistry phase
+    Reason:                NotYetOccurred
+    Status:                False
+    Type:                  ImagePushedToRegistry
+    Last Transition Time:  2025-05-22T12:32:20Z
+    Message:               This node has not yet entered the ImagePushedToRegistry phase
+    Reason:                NotYetOccurred
+    Status:                False
+    Type:                  ImageRolledOutToNode
+    Last Transition Time:  2025-05-22T12:32:20Z
+    Message:               This node has not yet entered the ImagePulledFromRegistry phase
+    Reason:                NotYetOccurred
+    Status:                False
+    Type:                  ImagePulledFromRegistry
+    Last Transition Time:  2025-05-22T12:32:20Z
+    Message:               This node has not yet entered the ImageAppliedToNode phase
+    Reason:                NotYetOccurred
+    Status:                False
+    Type:                  ImageAppliedToNode
+  Config Version:
+    Current:            rendered-master-78c005824ab643a5e2ac917f028b570f
+    Desired:            rendered-master-7de7db7349148346f2cfd55ca51582cc
+  Config Image:
+    Current:            <set-example>
+    Desired:            <set-example>
+  Observed Generation:  5
+Events:                 <none>
+```
+
+<!-- 
+Summary of proposed changes:
+- Add representation of `machineconfiguration.openshift.io/desiredConfig` in Spec
+- Add representations of `machineconfiguration.openshift.io/desiredConfig` and `machineconfiguration.openshift.io/currentConfig` in Status
+- Add some values to the conditions list (and the comment explaining the options for it) to better represent an OCL-enabled update
+  - ImageBuilt
+  - ImagePushedToRegistry
+  - ImageRolledOutToNode
+  - ImagePulledFromRegistry (child of ImageRolledOutToNode)
+  - ImageAppliedToNode (child of ImageRolledOutToNode)
+- Ideally this will be the contents of the MCN resources for OCL updates
+  - `oc get machineconfignodes`: name, poolname, desired config, current config, updated
+    - Question: Do we want the current and desired images listed here in addition to or instead of current and desired config versions?
+  - `oc get machineconfignodes -o wide`: previous + ImageBuilt, ImagePushedToRegistry, ImagePulledFromRegistry, ImageAppliedToNode, ImageRolledOutToNode, RebootedNode, UpdatePostActionComplete, UpdateComplete
+    - Note: inherit decision about current and desired images in the -o wide definition.
+ -->
+
 #### MCP Status Reporting
 The MCO in 4.15 aimed to use the MCN objects to improve the source of truth for MCP reporting. In other words, MCPs pulled their `Updated`, `Updating`, and `Degraded` statuses from the MCN objects rather than from the nodes themselves. However, due to bugs presented by the original implementation of this idea (see [OCPBUGS-32812](https://issues.redhat.com/browse/OCPBUGS-32812)), populating MCP statuses from the MCN is targeted to be implemented in 4.20 (see [MCO-1228](https://issues.redhat.com/browse/MCO-1228)) as part of the [Status Reporting GA](https://issues.redhat.com/browse/MCO-1506) work.
 
@@ -653,7 +870,7 @@ Not applicable. Feature introduced in Tech Preview.
 
 For the 4.19 GA of MCN (see [MCO-836](https://issues.redhat.com/browse/MCO-836)):
 - Bug fixes
-- MCN properly reports status transitions on standard, non-OnClusterLayering (OCL), updates
+- MCN properly reports status transitions on standard, non-OCL, updates
 - MCN properly handles the status reporting for PIS
 
 For the 4.20 GA of Status Reporting (see [MCO-1506](https://issues.redhat.com/browse/MCO-1506)), an extension of the mvp MCN functionality:
