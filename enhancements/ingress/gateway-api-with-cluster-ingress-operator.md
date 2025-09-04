@@ -15,6 +15,8 @@ tracking-link:
   - https://issues.redhat.com/browse/NE-1105
   - https://issues.redhat.com/browse/NE-1107
   - https://issues.redhat.com/browse/NE-1108
+see-also:
+  - "/enhancements/ingress/gateway-api-crd-life-cycle-management.md"
 ---
 
 # Gateway API with Cluster Ingress Operator
@@ -180,8 +182,14 @@ connection to the "example-app" service.
   * Automatically install OSSM when a GatewayClass is created, if needed.
   * Manage a LoadBalancer-type service and wildcard DNS for Gateways.
   * Provide a default security policy, which the cluster admin may modify.
-* Enable use of Gateway API v1beta1 features that are supported by OSSM.
+* Enable use of stable Gateway API features that are supported by OSSM.
   * Allow cleartext HTTP and edge-terminated HTTPS traffic.
+  * Support [Gateway](https://gateway-api.sigs.k8s.io/reference/spec/#gateway),
+      [GatewayClass](https://gateway-api.sigs.k8s.io/reference/spec/#gatewayclass),
+      [GRPCRoute](https://gateway-api.sigs.k8s.io/reference/spec/#grpcroute),
+      [HTTPRoute](https://gateway-api.sigs.k8s.io/reference/spec/#httproute),
+      and
+      [ReferenceGrant](https://gateway-api.sigs.k8s.io/reference/spec/#referencegrant_1).
 * Use a unified control-plane (i.e. a single Istio control-plane deployment for ingress and mesh).
   * Enable the cluster admin to install OSSM and then Gateway API or vice versa.
   * Work harmoniously with OpenShift Service Mesh for service mesh use-cases.
@@ -190,11 +198,10 @@ connection to the "example-app" service.
 
 ### Non-Goals
 
-* Gateway API features that are not yet beta status (as of Gateway API v0.5.1) are not supported.
-  * [GRPCRoute](https://gateway-api.sigs.k8s.io/references/spec/#gateway.networking.k8s.io/v1alpha2.GRPCRoute),
-    [TCPRoute](https://gateway-api.sigs.k8s.io/references/spec/#gateway.networking.k8s.io/v1alpha2.TCPRoute),
-    [TLSRoute](https://gateway-api.sigs.k8s.io/references/spec/#gateway.networking.k8s.io/v1alpha2.TLSRoute),
-    and [UDPRoute](https://gateway-api.sigs.k8s.io/references/spec/#gateway.networking.k8s.io/v1alpha2.UDPRoute)
+* Gateway API features that are not yet stable status as of Gateway API v1.2.1 are not supported.
+    [TCPRoute](https://gateway-api.sigs.k8s.io/reference/spec/#tcproute),
+    [TLSRoute](https://gateway-api.sigs.k8s.io/reference/spec/#tlsroute),
+    and [UDPRoute](https://gateway-api.sigs.k8s.io/reference/spec/#udproute)
     are still alpha, and so they are not supported at this time.
   * Support for TLS passthrough requires TLSRoute, so it is not supported.
   * [Policy attachment](https://gateway-api.sigs.k8s.io/references/policy-attachment/) is experimental, and so it is not supported at this time.
@@ -622,50 +629,178 @@ will be reconciled in any namespaces, removing the need for ServiceMeshMemberRol
 Cluster-scoped mode is a Tech Preview feature in OSSM 2.3 and fully supported in
 OSSM 2.4.
 
+#### Automated Deployments
+
+When a Gateway resource is created the Istio control-plane triggers the creation
+of an underlying Deployment resource to deploy the [Envoy] proxy server, and a
+Service (of type LoadBalancer by default) to expose it outside of the cluster.
+This is all intended to be opaque to the user as an implementation detail, but if
+more information on those implementation details is needed, see [Istio's
+documentation on "Automated Deployments"][istio-auto].
+
+Automated deployment (triggered by Gateway creation) is the only supported deployment mechanism in OpenShift 4.19. See [RBAC](#rbac) for more information on which roles are allowed to create Gateways.
+
+[Envoy]:https://github.com/envoyproxy/envoy
+[istio-auto]:https://istio.io/latest/docs/tasks/traffic-management/ingress/gateway-api/#automated-deployment
+
+#### Gateway Topology
+
+Users have the option to deploy their Gateways using two distinct topologies: shared gateways or dedicated gateways.
+Each topology addresses specific customer requirements, comes with different security implications (see [Security Policy](#security-policy)),
+and will be supported in OpenShift.
+
+##### Shared Gateway Topology
+
+In a shared Gateway topology, a Deployment serves routes from multiple
+namespaces or with multiple hostnames. The Gateway filters allow xRoutes from application
+namespaces using the `spec.listeners.allowedRoutes.namespaces` field. The
+Gateway serves multiple hostnames using the `spec.listeners.hostnames` field.
+This topology is ideal for multi-tenant environments where dedicated performance
+may not be as important.
+
+```mermaid
+flowchart TD
+    subgraph foo-app namespace
+        xRoute
+    end
+    subgraph bar-app namespace
+        xRoute2
+    end
+    subgraph openshift-ingress namespace
+        Gateway
+        Service
+    end
+    Gateway[Gateway] -.-> Service(Service)
+    xRoute[xRoute] --> Gateway[Gateway]
+    xRoute2[xRoute] --> Gateway[Gateway]
+```
+
+> **Note**: The default `spec.listeners.allowedRoutes.namespaces` is `Same`,
+> which restricts access to the same namespace, meaning that [Dedicated Gateway
+> Topology](#dedicated-gateway-topology) is the default unless otherwise
+> configured.
+
+> **Warning**: Setting `spec.listeners.allowedRoutes.namespaces` to `All`, or
+> anything other than `Same` has security implications. See the [relevant
+> section below](#allowing-all-namespaces-for-gateways) for more details.
+
+Users can have multiple shared Gateways, similar to the concept of [sharding](https://docs.openshift.com/container-platform/latest/networking/configuring_ingress_cluster_traffic/configuring-ingress-cluster-traffic-ingress-controller.html#nw-ingress-sharding_configuring-ingress-cluster-traffic-ingress-controller) in OpenShift. 
+
+##### Dedicated Gateway Topology
+
+In a dedicated Gateway topology, the load balancer Service, its proxy, and its source xRoutes are all deployed in the same namespace.  This setup is ideal for for applications that need a dedicated gateway
+to satisfy security or performance requirements.  For example, using this topology enables restrictions on who can use the certificates on a Gateway.
+
+```mermaid
+flowchart TD
+    subgraph foo-app namespace
+        xRoute
+        Gateway
+        LBService
+    end
+    Gateway[Gateway] -.-> LBService(LB Service)
+    xRoute[xRoute] --> Gateway[Gateway]
+```
+
+> **Note**: This is the default topology for created Gateways unless
+> `spec.listeners.allowedRoutes.namespaces` is explicitly configured to
+> something other than `Same`.
+
 #### Security Policy
 
-TBD.
+##### Allowing All Namespaces for Gateways
 
-#### Automated and Manual Gateway Deployments
+Unlike OpenShift ingress, neither Gateway API nor Istio restrict Gateway objects to specific namespaces. This design
+allows for different operational groups to create and manage their own [dedicated Gateway](#dedicated-gateway-topology)
+in an application namespace rather than relying on a [shared Gateway](#shared-gateway-topology) residing in another
+namespace. This departs from the current OpenShift ingress approach of all router pods being confined to the
+`openshift-ingress` namespace. Our design will allow Gateways to be created in any namespace, provided the user has
+sufficient [RBAC](#rbac) permissions.
 
-OpenShift Service Mesh and Istio have a feature called [automated deployment](https://istio.io/latest/docs/tasks/traffic-management/ingress/gateway-api/#automated-deployment)
-that creates an Envoy deployment and service in the same namespace for each Gateway
-if the Gateway's `spec.addresses` field is left unset. This enables users to seamlessly
-create a "shard" per Gateway, much like how each IngressController object is a shard
-for routes. It is enabled via the `PILOT_ENABLE_GATEWAY_API_DEPLOYMENT_CONTROLLER`
-env variable.
+###### Limiting DNS Across Namespaces
 
-Conversely, with [manual deployments](https://istio.io/latest/docs/tasks/traffic-management/ingress/gateway-api/#manual-deployment),
-if the Gateway has the `spec.addresses` field set, then it must manually link
-to an [ingress gateway](https://istio.io/latest/docs/tasks/traffic-management/ingress/ingress-control/#configuring-ingress-using-a-gateway).
-The user needs to make their own ingress gateway  service and deployment in the same
-namespace to manually link to, or they need to use the default ingress gateway (if enabled).
+As mentioned in [New Controller to Manage DNS Records for Gateway Listeners](#new-controller-to-manage-dns-records-for-gateway-listeners),
+the Ingress Operator automatically creates DNS records for Gateways. However, for our initial implementation, this
+will be limited to the `openshift-ingress` namespace to avoid introducing complexities for DNS management while
+Gateway API upstream has no standard for DNS record management (see
+[kubernetes-sigs/gateway-api#2627](https://github.com/kubernetes-sigs/gateway-api/issues/2627)).
 
-If the ServiceMeshControlPlane's `spec.gateways.ingress.enabled` field is set to `true`,
-Istio creates an `istio-ingressgateway` service, in the same namespace as the control plane,
-that is a ready-to-use proxy which gateways can be manually linked to. Istio [discourages](https://istio.io/latest/docs/setup/additional-setup/gateway/)
-the use of this ingress gateway as it couples the gateway to the control plane.
+##### Gateway Merging
 
-_To summarize, there are four ways a user could link Gateways to Ingress Gateways:_
-1. Use automated deployments
-2. Use a manual deployment, manually create a new ingress gateway service and deployment, and link to this service
-3. Use a manual deployment and link to the existing `istio-ingressgateway` ingress gateway
-4. Use a manual deployment and link to a previously created automated deployment ingress gateway
+Some Gateway API implementations support the concept of  Gateway or listener Merging, i.e. multiple Gateways (and their listeners) are virtually merged to optimize traffic management. Merging can be helpful in several
+situations, notably to coalesce multiple listeners together behind a single
+proxy or load-balancer to reduce costs.  However, this can be a risk for merges that happen across namespace boundaries.
 
-OpenShift will not inhibit or alter the functionality of automated deployments, except
-restricting creation of Gateways to specific users (_see the automated deployment section
-in Risks and Mitigations_).
+Istio has historically included a form of Gateway merging by way of what is in
+part a side-effect of its [Manual Deployments Option], wherein multiple
+Gateways could specify the same `spec.addresses`. This kind of merging poses
+potential security risks as one Gateway or listener could preempt another in a
+different namespace. As such [we made it possible to disable manual
+deployments][istio#55053], and then [disabled it by default in OSSM], and now
+consider it unsupported due to safety and maintainability concerns.
 
-Nor will OpenShift inhibit or alter the functionality of manual deployments. Users
-are responsible for understanding and creating links to manual deployments when creating
-Gateways.
+As such there is no supported mechanism for merging Gateways with our Gateway
+4.19 release. We are tracking and participating in [GEP-1713: ListenerSets -
+Standard Mechanism to Merge Multiple Gateways][GEP-1713] in upstream Kubernetes
+to make standardized merging available in a future release.
 
-The choice between these two features depends on the user's desired sharding scheme. Manual
-linking, being more expressive, can establish a many-to-one Gateway-to-Gateway-Deployment
-relationship, while automated deployments strictly establish a one-to-one
-Gateway-to-Gateway-Deployment relationship. Arguably, automated deployments are more portable
-among Gateway API implementations due to the fact manually deployments require linking an
-Istio-specific service address.
+[Manual Deployments Option]:https://istio.io/latest/docs/tasks/traffic-management/ingress/gateway-api/#manual-deployment
+[istio#55053]:https://github.com/istio/istio/pull/55053
+[disabled it by default in OSSM]:https://github.com/openshift-service-mesh/istio/pull/281
+[GEP-1713]:https://gateway-api.sigs.k8s.io/geps/gep-1713/
+
+##### RBAC
+
+OpenShift ships with a set of [default ClusterRoles](https://docs.openshift.com/container-platform/latest/post_installation_configuration/preparing-for-users.html#default-roles_post-install-preparing-for-users)
+to enable users to implement RBAC. Gateway API has its own [RBAC recommendation](https://gateway-api.sigs.k8s.io/concepts/security-model/#rbac)
+defining which personas get write permission for each object. Gateway API users in OpenShift will need the ability to
+implement one of these security models. To support this, the Ingress Operator will add additional RBAC
+permissions for the following default ClusterRoles:
+
+| OpenShift ClusterRole | GatewayClass | Gateway              | xRoute Types         | ReferenceGrant |
+|-----------------------|--------------|----------------------|----------------------|----------------|
+| cluster-admin         | All          | All                  | All                  | All            |
+| admin                 | None         | **Get, List, Watch** | **All**              | None           |
+| edit                  | None         | **Get, List, Watch** | **All**              | None           |
+| view                  | None         | **Get, List, Watch** | **Get, List, Watch** | None           |
+
+For this initial RBAC implementation, write access to Gateways (other than `cluster-admin`) is not included due
+to their complexity and potential security risks. However, users can still create custom roles, such as a
+`Gateway Operator` role, to enable a role with the ability to write Gateways without requiring super-user privileges.
+
+The following diagram maps the personas in Gateway API's [Simple 3 Tier Model](https://gateway-api.sigs.k8s.io/concepts/security-model/#write-permissions-for-simple-3-tier-model) to potential OpenShift ClusterRoles:
+```mermaid
+flowchart LR
+    InfraOperator[Infrastructure Operator] --> ClusterAdmin(cluster-admin)
+    subgraph ClusterRole
+        ClusterAdmin
+        Admin
+        Edit
+    end
+    subgraph Gateway API Persona
+        InfraOperator
+        ClusterOperator
+        AppDev
+    end
+    ClusterOperator[Cluster Operator] --> ClusterAdmin(cluster-admin)
+    AppDev[Application Developer] --> Admin(admin)
+    AppDev[Application Developer] --> Edit(edit)
+```
+
+The Infrastructure Operator is generally responsible for installing and configuring the Gateway API provider
+(e.g., Istio), installing the Gateway API CRDs, and creating the GatewayClass. However, since the Ingress Operator
+handles the installation of OSSM and the CRDs, the Infrastructure Operator is only responsible for creating
+and managing the GatewayClass. Cluster Operators create and manage the Gateways and ReferenceGrants, while
+Application Developers create and manage the xRoutes.
+
+> **Note**: While initially access to ReferenceGrant will be limited to cluster-admin
+> scope due to its security sensitive nature, we will consider and re-evaluate
+> the need for more specific scopes for this resource because it could be a useful
+> feature not currently available in OpenShift. 
+
+The [Advanced 4 Tier Model](https://gateway-api.sigs.k8s.io/concepts/security-model/#write-permissions-for-advanced-4-tier-model)
+is not implementable using the default ClusterRoles. However, as mentioned above, users can create a custom
+`Gateway Operator` role and bind it to a specific namespace to implement the Application Admin persona.
 
 ### Risks and Mitigations
 
@@ -673,7 +808,7 @@ Istio-specific service address.
 
 Enabling automated deployments and also allowing arbitrary users to create Gateways would
 create a new attack surface for untrusted cluster users.  For this reason, the
-default policy allows only cluster admins to create Gateways.
+default policy allows only cluster admins to create Gateways (see [RBAC](#rbac)).
 
 #### Release Alignment
 
@@ -852,24 +987,26 @@ cluster-wide watches for Gateway API resources as mentioned above.
 
 #### Can we use the Gateway API v1beta1 CRDs?
 
-OSSM 2.3 is based on Istio 1.14, which recently added Gateway API v1beta1 support,
-and OSSM 2.4 is based on Istio 1.16, which also supports Gateway API v1beta1.
-Supporting v1beta1 is highly desirable, and OSSM 2.4 brings many other changes
-that are of interest for this enhancement. We need to determine whether we will
-be able to use OSSM 2.4 for this enhancement. Istio 1.14, the version found in
-OSSM 2.3, is now [EOL](https://istio.io/latest/news/support/announcing-1.14-eol-final/)
-which is less than desirable for dev preview. 
+The dev preview versions of this feature are based on upstream Istio and OSSM 2;
+the GA version of this feature is based on OSSM 3.
 
-If OSSM 2.4 is not released in time for OpenShift 4.13, we may resort to using
-OSSM 2.3 or a pre-release development build of OSSM 2.4 for dev preview.  While
-using a pre-release version is not ideal, OSSM 2.4 has sufficient advantages to
-outweigh the disadvantages of using development build in the context of a dev
-preview.
+- For OpenShift 4.12, the initial dev preview uses Istio 1.15.1, which the user
+  installs using an upstream build; this dev preview uses Gateway API v0.5.1
+  (v1beta1).
+- For OpenShift 4.13, the dev preview uses OSSM 2.4.0, based on Istio 1.16.5,
+  and Gateway API v0.5.1 (more precisely, v0.5.1-0.20220921185115-ee7a83814203;
+  still v1beta1).
+- For OpenShift 4.17, the dev preview uses OSSM 2.5.2, based on Istio 1.18.2,
+  and Gateway API v0.6.2 (still v1beta1).
+- For OpenShift 4.18, the dev preview uses OSSM 2.6.0, based on Istio 1.20.8,
+  and Gateway API v1.0.0.
+- For OpenShift 4.19, the feature uses OSSM 3.0.0, based on Istio 1.24.3, and
+  Gateway API v1.2.1.
 
-**Resolution**: Yes. OSSM 2.3.1 is based on Istio 1.14.5, which has support for
-Gateway API v1beta1. OSSM 2.4 is based on Istio 1.16, which also supports Gateway
-API v1beta1. More specifically, both OSSM versions support Gateway API v0.5.1.
-We will support the v1beta1 CRDs that are promoted in Gateway API v0.5.1.
+As of Gateway API v1.2.1, the core APIs are now all v1beta1 or v1, and OSSM
+3.0.0 supports all of these APIs.
+
+**Resolution**: Yes.  We support all v1 and v1beta1 APIs in Gateway API v1.2.1.
 
 #### Should we use the "openshift-ingress" namespace for Gateway CRs?
 
@@ -932,21 +1069,12 @@ To answer this question, we need to do the following:
 * Verify that OpenShift Service Mesh will include support for this feature in time for this EP.
 * Evaluate any potential security concerns around this feature.
 
-**Resolution**: The answer depends on what version of OSSM is selected for dev
-preview. If we use OSSM 2.3, we will **NOT** enable ReferenceGrants. If we use OSSM 2.4,
-we will enable ReferenceGrants. This is because ReferenceGrants are non-functional in
-OSSM 2.3, but functional in OSSM 2.4.
+**Resolution**: Yes we will be enabling ReferenceGrant, but only for cluster admins.
 
-OSSM 2.3 uses Istio 1.14 and Istio 1.14 doesn't support ReferenceGrants; therefore,
-in OSSM 2.3, ReferenceGrants are **non-functional**. However, by default,
-Gateway API objects in OSSM 2.3 can reference objects across namespace boundaries,
-such as an HTTPRoute referencing a service in another namespace. A ReferenceGrant
-CRD has no impact on this functionality.
-
-OSSM 2.4 uses Istio 1.16 and Istio 1.16 supports ReferenceGrants; therefore,
-in OSSM 2.4, ReferenceGrants are **functional**. This means that, by default,
-Gateway API objects in OSSM 2.4 **CANNOT** reference objects across namespace
-boundaries without an appropriate ReferenceGrant object.
+Previous versions of OSSM (such as 2.3) did not support ReferenceGrants, and
+would even sometimes allow the cross-namespace functionality by default.
+However, Gateway API GA will be deployed using OSSM 3.x which _does_ fully
+support and enforce it, and therefore so will we.
 
 There are security risks to allowing cross-namespace references. A nefarious user
 could send network traffic to locations they would otherwise not have access to via a
@@ -958,7 +1086,7 @@ for ReferenceGrants mitigates this risk.
 
 In the future, ReferenceGrant will likely be migrated out of Gateway API and into
 Kubernetes upstream. Until then, we will support ReferenceGrant as a part of
-Gateway API v1beta1 when using OSSM 2.4.
+Gateway API when using OSSM 3.x.
 
 #### Should we have a feature gate?
 
@@ -1065,7 +1193,7 @@ TBD.
 
 TBD.
 
-## Alternatives
+## Alternatives (Not Implemented)
 
 ### Using external-dns for DNS management
 
